@@ -56,6 +56,9 @@ You can customize the setup choosing:
   - pass: **kuberocks**
   - ssh-key: generated during vm-provisioning and stores in the project folder
 
+- Required installations:
+  sudo dnf install -y ansible
+
 The user is capable of logging via SSH too.
 
 ## Quickstart

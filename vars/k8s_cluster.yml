@@ -1,13 +1,12 @@
 # General configuration
 k8s:
-  cluster_name: k8s-test
+  cluster_name: k8s-maxilab
   cluster_os: Ubuntu
   cluster_version: "1.30"
   container_runtime: crio
   master_schedulable: false
 
 # Nodes configuration
-
   control_plane:
     vcpu: 2
     mem: 2
@@ -16,18 +15,17 @@ k8s:
 
   worker_nodes:
     vcpu: 2
-    mem: 2
-    vms: 1
+    mem: 4
+    vms: 2
     disk: 40
 
 # Network configuration
-
   network:
-    network_cidr: 192.168.200.0/24
+    network_cidr: 19.16.20.0/24
     domain: k8s.test
     additional_san: ""
-    pod_cidr: 10.20.0.0/16
-    service_cidr: 10.110.0.0/16
+    pod_cidr: 10.2.0.0/16
+    service_cidr: 10.11.0.0/16
 
 # Choose between [calico/flannel/cilium]
     cni_plugin: calico
@@ -39,7 +37,6 @@ rook_ceph:
   rook_cluster_size: 1
 
 # Ingress controller configuration [nginx/haproxy/contour]
-
 ingress_controller:
   install_ingress_controller: true
   type: haproxy
@@ -48,8 +45,7 @@ ingress_controller:
     https: 31443
 
 # Section for metalLB setup
-
 metallb:
-  install_metallb: false
+  install_metallb: true
   l2:
-    iprange: 192.168.200.210-192.168.200.250
+    iprange: 192.16.20.220-192.16.20.245
