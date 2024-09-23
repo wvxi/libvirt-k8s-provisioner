@@ -4,85 +4,75 @@
   vars_files:
     - vars/k8s_cluster.yml
   tasks:
-    - name: Use TF project to ensure pool and network are defined
-      community.general.terraform:
-        project_path: "clusters/{{ k8s.cluster_name }}/libvirt-resources"
-        variables:
-          domain: "{{ k8s.network.domain }}"
-          network_cidr: ' ["{{ k8s.network.network_cidr }}"]'
-          cluster_name: "{{ k8s.cluster_name }}"
-        force_init: true
-        state: present
-
-    - name: qemu SELinux fix for running images in different folders
+    - name: SELinux fix for running images in different folders
+      when: (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version | int >= 18)
       block:
         - name: Ensure security_driver is disabled
-          lineinfile:
+          ansible.builtin.lineinfile:
             line: 'security_driver = "none"'
             path: /etc/libvirt/qemu.conf
             state: present
 
         - name: Restart libvirtd service
-          service: 
+          ansible.builtin.service:
             name: libvirtd
             state: restarted
-      when: (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version | int  >= 18)
-
 
     - name: Take care of systemd-resolved on F33 and Ubuntu hosts
+      when:
+        (ansible_distribution == 'Fedora' and ansible_distribution_major_version | int > 33) or
+        (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version | int > 18)
       block:
         - name: Ensure systemd-resolved config dir is present
-          file:
+          ansible.builtin.file:
             path: /etc/systemd/resolved.conf.d/
             state: directory
+            mode: "0755"
 
         - name: Enable localdns if systemd-resolved is present
-          template:
+          ansible.builtin.template:
             src: systemd-resolved.j2
-            dest: /etc/systemd/resolved.conf.d/{{ k8s.cluster_name }}-local-kube.conf
+            dest: /etc/systemd/resolved.conf.d/{{ k8s.cluster_name | default('k8s-test', true) }}-local-kube.conf
+            mode: "0755"
           notify:
             - Restart systemd-resolved
-      when: (ansible_distribution == 'Fedora' and ansible_distribution_major_version | int >= 33) or (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version | int >= 18)
 
     - name: Ensure NM configuration directory exists
-      file:
+      ansible.builtin.file:
         path: /etc/NetworkManager/conf.d
         state: directory
+        mode: "0755"
 
     - name: Ensure NM dnsmasq directory exists
-      file:
+      ansible.builtin.file:
         path: /etc/NetworkManager/dnsmasq.d
-        state: directory        
+        state: directory
+        mode: "0755"
 
     - name: Configure NetworkManager for local DNS
-      copy:
+      ansible.builtin.copy:
         src: files/localdns.conf
-        dest: /etc/NetworkManager/conf.d/{{ k8s.cluster_name }}-localdns.conf
-      notify: 
+        dest: /etc/NetworkManager/conf.d/{{ k8s.cluster_name | default('k8s-test', true) }}-localdns.conf
+        mode: "0755"
+      notify:
         - Restart NetworkManager
 
     - name: Configure NetworkManager for libvirt network
-      template:
+      ansible.builtin.template:
         src: templates/libvirt_dnsmasq.j2
-        dest: /etc/NetworkManager/dnsmasq.d/{{ k8s.cluster_name }}-libvirt_dnsmasq.conf
+        dest: /etc/NetworkManager/dnsmasq.d/{{ k8s.cluster_name | default('k8s-test', true) }}-libvirt_dnsmasq.conf
+        mode: "0755"
       notify:
         - Restart NetworkManager
-        - Wait for local DNS resolver to be up
-  
+
   handlers:
     - name: Restart systemd-resolved
-      service:
+      ansible.builtin.service:
         name: systemd-resolved
         state: restarted
         enabled: true
 
     - name: Restart NetworkManager
-      service:
+      ansible.builtin.service:
         name: NetworkManager
         state: restarted
-
-    - name: Wait for local DNS resolver to be up
-      wait_for:
-        port: 53
-        delay: 10
-      when: (ansible_distribution == 'Fedora' and ansible_distribution_major_version | int < 33) or  (ansible_distribution == 'Ubuntu' and ansible_distribution_major_version | int < 18)

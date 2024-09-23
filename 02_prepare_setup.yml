@@ -3,48 +3,56 @@
   vars_files:
     - vars/k8s_cluster.yml
   tasks:
-    - name: Ensure cluster folder exists
-      file:
-        path: "clusters/{{ k8s.cluster_name }}"
+    - name: Set user home as fact
+      ansible.builtin.set_fact:
+        home_dir: "{{ ansible_env.HOME }}"
+
+    - name: Ensure needed pip packages are present
+      ansible.builtin.pip:
+        executable: pip3
+        name: "{{ item }}"
+      loop: "{{ python_packages }}"
+
+    - name: Ensure workspace directory exists
+      ansible.builtin.file:
+        path: "{{ workspace_directory.base_path }}"
         state: directory
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}" 
-        mode: 0755
+        mode: "0755"
+
+    - name: Ensure cluster folder exists
+      ansible.builtin.file:
+        path: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}"
+        state: directory
+        mode: "0755"
 
     - name: Ensure pivot tmp folder exists
-      file:
-        path: "/tmp/{{ k8s.cluster_name }}"
+      ansible.builtin.file:
+        path: "/tmp/{{ k8s.cluster_name | default('k8s-test', true) }}"
         state: directory
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}"
-        mode: 0755
+        mode: "0755"
 
     - name: Populate cluster folder with terraform files
-      copy:
+      ansible.builtin.copy:
         src: "files/terraform/"
-        dest: "clusters/{{ k8s.cluster_name }}"
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}"
-        mode: 0755
+        dest: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}"
+        mode: "0755"
 
     - name: Snapshot cluster configuration for further use
-      copy:
-        src: "vars/k8s_cluster.yml"
-        dest: "clusters/{{ k8s.cluster_name }}/"
-        owner: "{{ ansible_user_id }}"
-        group: "{{ ansible_user_id }}"
-        mode: 0755
+      ansible.builtin.copy:
+        src: "vars"
+        dest: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}/"
+        mode: "0755"
 
     - name: Ensure helm is installed
-      unarchive:
+      ansible.builtin.unarchive:
         src: "{{ helm.helm_installer }}"
         dest: /tmp/
         remote_src: true
 
     - name: Install helm in PATH
-      copy:
+      ansible.builtin.copy:
         src: /tmp/linux-amd64/helm
-        dest: /usr/local/bin/
+        dest: /usr/bin/
         remote_src: true
         mode: +x
       become: true
@@ -54,39 +62,50 @@
         state: present
         plugin_path: https://github.com/databus23/helm-diff
 
-    - name: remove directory
-      file:
+    - name: Remove directory
+      ansible.builtin.file:
         path: /tmp/linux-amd64
         state: absent
 
-    - name: Ensure needed pip packages are present
-      pip:
-        executable: pip3
-        name: "{{ item }}"
-      loop: 
-        - PyYAML
-        - kubernetes
-        - jsonpatch
-
-    - name: Retrieve the minor version
-      set_fact:
-        kubernetes_version: "{{ k8s.cluster_version.split('.') }}"
-
     - name: Create ssh keypair
-      openssh_keypair:
-        path: "clusters/{{ k8s.cluster_name }}/id_rsa"
+      community.crypto.openssh_keypair:
+        path: "{{ playbook_dir }}/id_rsa_{{ k8s.cluster_name | default('k8s-test', true) }}"
+      delegate_to: localhost
+
+    - name: Copy SSH keys in working directory
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/{{ item }}"
+        dest: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}/{{ item }}"
+        mode: "0755"
+      loop:
+        - id_rsa_{{ k8s.cluster_name | default('k8s-test', true) }}
+        - id_rsa_{{ k8s.cluster_name | default('k8s-test', true) }}.pub
+
+    - name: Getting ssh private key
+      ansible.builtin.slurp:
+        src: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}/id_rsa_{{ k8s.cluster_name | default('k8s-test', true) }}" # noqa yaml[line-length]
+      register: k8s_key
+
+    - name: Getting ssh public key
+      ansible.builtin.slurp:
+        src: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}/id_rsa_{{ k8s.cluster_name | default('k8s-test', true) }}.pub" # noqa yaml[line-length]
+      register: k8s_key_pub
+
+    - name: Set SSH keys as fact
+      ansible.builtin.set_fact:
+        k8s_key: "{{ k8s_key['content'] | b64decode }}"
+        k8s_key_pub: "{{ k8s_key_pub['content'] | b64decode }}"
 
     - name: Download CentOS image
-      get_url:
+      ansible.builtin.get_url:
         url: "{{ centos.cloud_image }}"
         dest: /tmp/{{ image_name }}.qcow2
-        mode: 0777
+        mode: "0777"
       when: k8s.cluster_os == 'CentOS'
 
     - name: Download Ubuntu image
-      get_url:
-        url: "{{ ubuntu_hirsute.cloud_image if kubernetes_version.1 | int > 20 else ubuntu.cloud_image }}"
+      ansible.builtin.get_url:
+        url: "{{ ubuntu_jammy.cloud_image }}"
         dest: /tmp/{{ image_name }}.qcow2
-        mode: 0777
+        mode: "0777"
       when: k8s.cluster_os == 'Ubuntu'
-

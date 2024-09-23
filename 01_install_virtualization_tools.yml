@@ -4,51 +4,55 @@
   become: true
   tasks:
     - name: Manage packets when distro is 'CentOS'
-      block:
-      - name: Upgrade all packages
-        yum:
-          name: '*'
-          state: latest
-
-      - name: Install required packages
-        yum:
-          name: "{{ os_packages.centos }}"
-          state: latest
-        when:
-          - ansible_distribution == 'CentOS'
-
-      - name: Install required packages
-        yum:
-          name: "{{ os_packages.fedora }}"
-          state: latest
-        when:
-          - ansible_distribution == 'Fedora'
-
       when: ansible_distribution == 'Fedora' or ansible_distribution == 'CentOS'
+      block:
+        - name: Upgrade all packages
+          ansible.builtin.yum:
+            name: "*"
+            state: latest # noqa package-latest
+
+        - name: Virtualization services are enabled
+          ansible.builtin.service:
+            name: virtqemud
+            state: started
+            enabled: true
+
+        - name: Install required packages
+          ansible.builtin.yum:
+            name: "{{ os_packages.centos }}"
+            state: latest # noqa package-latest
+          when:
+            - ansible_distribution == 'CentOS'
+
+        - name: Install required packages
+          ansible.builtin.yum:
+            name: "{{ os_packages.fedora }}"
+            state: present
+          when:
+            - ansible_distribution == 'Fedora'
 
     - name: Manage packets when distro is 'Ubuntu'
-      block:
-      - name: Upgrade all packages
-        apt:
-          name: '*'
-          state: latest
-
-      - name: Install required packages
-        apt:
-          name: "{{ os_packages.ubuntu }}"
-          state: latest
-
       when: ansible_distribution == 'Ubuntu'
+      block:
+        - name: Upgrade all packages
+          ansible.builtin.apt:
+            name: "*"
+            state: latest # noqa package-latest
+
+        - name: Install required packages
+          ansible.builtin.apt:
+            name: "{{ os_packages.ubuntu }}"
+            state: present
+
+        - name: Virtualization services are enabled
+          ansible.builtin.service:
+            name: libvirtd
+            state: started
+            enabled: true
 
     - name: Download and provision Terraform
-      unarchive: 
+      ansible.builtin.unarchive:
         src: "{{ terraform_url }}"
         dest: /usr/bin/
-        mode: 0755
-        remote_src: yes
-
-    - name: Virtualization services are enabled
-      service:
-        name: libvirtd
-        state: started
-        enabled: true
+        mode: "0755"
+        remote_src: true

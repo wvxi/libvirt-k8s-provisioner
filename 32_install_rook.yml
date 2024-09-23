@@ -1,11 +1,12 @@
---- 
+---
 - name: Prepare cluster to install rook
   hosts: vm_host
   run_once: true
   vars_files:
     - vars/k8s_cluster.yml
   tasks:
-    - name: Take all required steps to install Rook in your cluster
+    - name: Configure Rook
+      when: rook_ceph.install_rook
       block:
         - name: Ensure the needed Namespaces exist.
           kubernetes.core.k8s:
@@ -14,7 +15,7 @@
               kind: Namespace
               metadata:
                 name: rook-ceph
-            kubeconfig: "clusters/{{ k8s.cluster_name }}/admin.kubeconfig"
+            kubeconfig: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}/admin.kubeconfig"
             state: present
 
         - name: Add helm chart repository for Rook
@@ -31,24 +32,27 @@
           kubernetes.core.helm:
             name: rook-operator
             chart_ref: "{{ rook.operator.chart.ref }}"
-            kubeconfig: "clusters/{{ k8s.cluster_name }}/admin.kubeconfig"
+            kubeconfig: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}/admin.kubeconfig"
             release_namespace: rook-ceph
             update_repo_cache: true
+            values:
+              csi:
+                provisionerReplicas: "{{ rook_ceph.rook_cluster_size }}"
             wait: true
 
         - name: Trigger rook template
-          template:
+          ansible.builtin.template:
             src: templates/rook-values.yml.j2
-            dest: /tmp/{{ k8s.cluster_name }}/rook-values.yaml
+            dest: /tmp/{{ k8s.cluster_name | default('k8s-test', true) }}/rook-values.yaml
+            mode: "0755"
 
         - name: Ensure rook-ceph-cluster helm chart is installed
           kubernetes.core.helm:
             name: rook-ceph-cluster
             chart_ref: "{{ rook.cluster.chart.ref }}"
-            kubeconfig: "clusters/{{ k8s.cluster_name }}/admin.kubeconfig"
+            kubeconfig: "{{ workspace_directory.base_path }}/clusters/{{ k8s.cluster_name | default('k8s-test', true) }}/admin.kubeconfig"
             release_namespace: rook-ceph
             update_repo_cache: true
             values_files:
-              - /tmp/{{ k8s.cluster_name }}/rook-values.yaml
+              - /tmp/{{ k8s.cluster_name | default('k8s-test', true) }}/rook-values.yaml
             wait: true
-      when: rook_ceph.install_rook
