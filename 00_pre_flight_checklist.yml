@@ -9,13 +9,13 @@
         msg: The chosen version is not supported, only versions >= 1.26 are supported
       when: k8s.cluster_version is version('1.28', '<')
 
-    - name: Check if distribution is supported
-      ansible.builtin.fail:
-        msg: Your distribution is actually unsupported. Supported values are 'Fedora', 'CentOS', 'Ubuntu'
-      when:
-        - ansible_distribution != 'CentOS'
-        - ansible_distribution != 'Fedora'
-        - ansible_distribution != 'Ubuntu'
+        # - name: Check if distribution is supported
+        #ansible.builtin.fail:
+        #msg: Your distribution is actually unsupported. Supported values are 'Fedora', 'CentOS', 'Ubuntu'
+        # when:
+        #- ansible_distribution != 'CentOS'
+        #- ansible_distribution != 'Fedora'
+        #- ansible_distribution != 'Ubuntu'
 
     - name: Check if target distribution is correct
       ansible.builtin.fail:
